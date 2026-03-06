@@ -91,6 +91,8 @@ FROM fetch_vllm_${REMOTE_VLLM} AS fetch_vllm
 # -----------------------
 # vLLM build stages
 FROM fetch_vllm AS build_vllm
+# CMake required by setup.py for building extensions
+RUN apt-get update -q -y && apt-get install -q -y cmake && rm -rf /var/lib/apt/lists/*
 # Build vLLM (setup.py auto-detects sccache in PATH)
 RUN cd vllm \
     && pip install -r requirements/rocm.txt \
