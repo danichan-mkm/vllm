@@ -381,6 +381,17 @@ RUN --mount=type=bind,from=export_vllm,src=/,target=/install \
     && pip uninstall -y vllm \
     && uv pip install *.whl
 
+# Install amd-aiter and Triton from repo/branch (for gfx1250; base image may not include them)
+ARG AITER_REPO="https://github.com/ROCm/aiter"
+ARG AITER_BRANCH="shared/triton-gfx12"
+ARG TRITON_REPO="https://github.amd.com/GFX-IP-Arch/triton"
+ARG TRITON_BRANCH="shared/gfx1250"
+RUN apt-get update -q -y && apt-get install -q -y git && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 --branch "$AITER_BRANCH" "$AITER_REPO" /tmp/aiter \
+    && pip install -e /tmp/aiter && rm -rf /tmp/aiter \
+    && git clone --depth 1 --branch "$TRITON_BRANCH" "$TRITON_REPO" /tmp/triton \
+    && pip install -e /tmp/triton && rm -rf /tmp/triton
+
 ARG COMMON_WORKDIR
 ARG BASE_IMAGE
 
