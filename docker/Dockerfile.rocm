@@ -388,9 +388,9 @@ ARG TRITON_REPO="https://github.amd.com/GFX-IP-Arch/triton"
 ARG TRITON_BRANCH="shared/gfx1250"
 RUN apt-get update -q -y && apt-get install -q -y git && rm -rf /var/lib/apt/lists/* \
     && git clone --depth 1 --branch "$AITER_BRANCH" "$AITER_REPO" /tmp/aiter \
-    && pip install -e /tmp/aiter && rm -rf /tmp/aiter \
+    && pip install --no-build-isolation /tmp/aiter && rm -rf /tmp/aiter \
     && git clone --depth 1 --branch "$TRITON_BRANCH" "$TRITON_REPO" /tmp/triton \
-    && pip install -e /tmp/triton && rm -rf /tmp/triton
+    && pip install --no-build-isolation /tmp/triton && rm -rf /tmp/triton
 
 ARG COMMON_WORKDIR
 ARG BASE_IMAGE
