@@ -382,14 +382,20 @@ RUN --mount=type=bind,from=export_vllm,src=/,target=/install \
     && uv pip install *.whl
 
 # Install amd-aiter and Triton from repo/branch (for gfx1250; base image may not include them)
+# Triton repo (github.amd.com) requires authentication. A GitHub PAT is passed
+# via BuildKit secret "gh_token" and used only during git clone -- it is never
+# persisted in any image layer.
+#   Build with:  docker build --secret id=gh_token,env=GH_TOKEN ...
 ARG AITER_REPO="https://github.com/ROCm/aiter"
 ARG AITER_BRANCH="shared/triton-gfx12"
 ARG TRITON_REPO="https://github.amd.com/GFX-IP-Arch/triton"
 ARG TRITON_BRANCH="shared/gfx1250"
-RUN apt-get update -q -y && apt-get install -q -y git && rm -rf /var/lib/apt/lists/* \
+RUN --mount=type=secret,id=gh_token apt-get update -q -y && apt-get install -q -y git && rm -rf /var/lib/apt/lists/* \
     && git clone --depth 1 --branch "$AITER_BRANCH" "$AITER_REPO" /tmp/aiter \
     && pip install --no-build-isolation /tmp/aiter && rm -rf /tmp/aiter \
-    && git clone --depth 1 --branch "$TRITON_BRANCH" "$TRITON_REPO" /tmp/triton \
+    && GH_TOKEN=$(cat /run/secrets/gh_token) \
+    && git clone --depth 1 --branch "$TRITON_BRANCH" \
+    "https://${GH_TOKEN}@$(echo $TRITON_REPO | sed 's|https://||')" /tmp/triton \
     && pip install --no-build-isolation /tmp/triton && rm -rf /tmp/triton
 
 ARG COMMON_WORKDIR
