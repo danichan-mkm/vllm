@@ -21,6 +21,13 @@ MoEBackend = Literal[
     "aiter",
 ]
 
+NormBackend = Literal[
+    "auto",
+    "vllm",
+    "aiter_ck",
+    "aiter_triton",
+]
+
 
 @config
 class KernelConfig:
@@ -42,9 +49,24 @@ class KernelConfig:
     - "marlin": Use Marlin kernels (weight-only quantization)\n
     - "aiter": Use AMD AITer kernels (ROCm only)"""
 
+    norm_backend: NormBackend = "auto"
+    """Backend for RMSNorm kernels on ROCm. Available options:
+
+    - "auto": Automatically select (AITER CK when AITER enabled, else vLLM)\n
+    - "vllm": Use vLLM native HIP/CUDA RMSNorm implementation\n
+    - "aiter_ck": Use AITER Composable Kernel RMSNorm (default when AITER on)\n
+    - "aiter_triton": Use AITER Triton RMSNorm implementation"""
+
     @field_validator("moe_backend", mode="before")
     @classmethod
     def _normalize_moe_backend(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.lower().replace("-", "_")
+        return value
+
+    @field_validator("norm_backend", mode="before")
+    @classmethod
+    def _normalize_norm_backend(cls, value: Any) -> Any:
         if isinstance(value, str):
             return value.lower().replace("-", "_")
         return value

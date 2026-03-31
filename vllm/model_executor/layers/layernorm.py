@@ -78,9 +78,10 @@ def fused_add_rms_norm(
     from vllm import _custom_ops as ops
 
     if vllm_is_batch_invariant():
-        return rms_norm_batch_invariant(
-            x + residual, weight, variance_epsilon
-        ), x + residual
+        return (
+            rms_norm_batch_invariant(x + residual, weight, variance_epsilon),
+            x + residual,
+        )
     ops.fused_add_rms_norm(
         x,
         residual,
@@ -107,19 +108,42 @@ def poly_norm(
 
 
 def dispatch_rocm_rmsnorm_func(
-    with_fused_add: bool, dtype: torch.dtype, use_aiter: bool = False
+    with_fused_add: bool,
+    dtype: torch.dtype,
+    use_aiter: bool = False,
+    norm_backend: str = "auto",
 ):
-    use_aiter = use_aiter and dtype in [
-        torch.float16,
-        torch.bfloat16,
-    ]
+    is_aiter_compatible_dtype = dtype in [torch.float16, torch.bfloat16]
 
+    if norm_backend == "aiter_triton" and is_aiter_compatible_dtype:
+        logger.info(
+            "Using AITER Triton RMSNorm backend (norm_backend=%s).", norm_backend
+        )
+        if with_fused_add:
+            return rocm_aiter_ops.rms_norm2d_with_add_triton
+        return rocm_aiter_ops.rms_norm_triton
+
+    if norm_backend == "vllm":
+        logger.info(
+            "Using vLLM native RMSNorm backend (norm_backend=%s).", norm_backend
+        )
+        if with_fused_add:
+            return fused_add_rms_norm
+        return rms_norm
+
+    if norm_backend == "aiter_ck" and is_aiter_compatible_dtype:
+        logger.info("Using AITER CK RMSNorm backend (norm_backend=%s).", norm_backend)
+        if with_fused_add:
+            return rocm_aiter_ops.rms_norm2d_with_add
+        return rocm_aiter_ops.rms_norm
+
+    # "auto": existing behavior — AITER CK when enabled, else vLLM native
+    use_aiter = use_aiter and is_aiter_compatible_dtype
     if use_aiter and with_fused_add:
         return rocm_aiter_ops.rms_norm2d_with_add
     if use_aiter:
         return rocm_aiter_ops.rms_norm
 
-    # fall back to CUDA implementation
     if with_fused_add:
         return fused_add_rms_norm
     return rms_norm
@@ -158,14 +182,25 @@ class RMSNorm(CustomOp):
             self.weight = nn.Parameter(self.weight)
 
         if current_platform.is_rocm():
+            from vllm.config import get_current_vllm_config_or_none
+
+            norm_backend = "auto"
+            vllm_config = get_current_vllm_config_or_none()
+            if vllm_config is not None:
+                norm_backend = vllm_config.kernel_config.norm_backend
+
             aiter_rmsnorm_enabled = rocm_aiter_ops.is_rmsnorm_enabled()
             self.rocm_norm_func = dispatch_rocm_rmsnorm_func(
                 with_fused_add=False,
                 dtype=weight_dtype,
                 use_aiter=aiter_rmsnorm_enabled,
+                norm_backend=norm_backend,
             )
             self.rocm_norm_func_with_add = dispatch_rocm_rmsnorm_func(
-                with_fused_add=True, dtype=weight_dtype, use_aiter=aiter_rmsnorm_enabled
+                with_fused_add=True,
+                dtype=weight_dtype,
+                use_aiter=aiter_rmsnorm_enabled,
+                norm_backend=norm_backend,
             )
 
         # Optional: enable Oink Blackwell RMSNorm custom-op fast path on

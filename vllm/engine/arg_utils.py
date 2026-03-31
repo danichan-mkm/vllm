@@ -194,9 +194,9 @@ def collection_to_kwargs(type_hints: set[TypeHint], type: TypeHint) -> dict[str,
     elem_type = types[0]
 
     # Handle Ellipsis
-    assert all(t is elem_type for t in types if t is not Ellipsis), (
-        f"All non-Ellipsis elements must be of the same type. Got {types}."
-    )
+    assert all(
+        t is elem_type for t in types if t is not Ellipsis
+    ), f"All non-Ellipsis elements must be of the same type. Got {types}."
 
     # Handle Union types
     if get_origin(elem_type) in {Union, UnionType}:
@@ -1233,6 +1233,10 @@ class EngineArgs:
         moe_backend_kwargs["type"] = lambda s: s.lower().replace("-", "_")
         kernel_group.add_argument("--moe-backend", **moe_backend_kwargs)
 
+        norm_backend_kwargs = kernel_kwargs["norm_backend"]
+        norm_backend_kwargs["type"] = lambda s: s.lower().replace("-", "_")
+        kernel_group.add_argument("--norm-backend", **norm_backend_kwargs)
+
         # vLLM arguments
         vllm_kwargs = get_kwargs(VllmConfig)
         vllm_group = parser.add_argument_group(
@@ -1396,9 +1400,9 @@ class EngineArgs:
                     self.model_loader_extra_config.to_serializable()
                 )
             self.model_loader_extra_config["tensorizer_config"] = {}
-            self.model_loader_extra_config["tensorizer_config"]["tensorizer_dir"] = (
-                self.model
-            )
+            self.model_loader_extra_config["tensorizer_config"][
+                "tensorizer_dir"
+            ] = self.model
             self.validate_tensorizer_args()
 
         return LoadConfig(
@@ -1493,9 +1497,9 @@ class EngineArgs:
             self.kv_cache_dtype, model_config
         )
 
-        assert self.enable_prefix_caching is not None, (
-            "enable_prefix_caching must be set by this point"
-        )
+        assert (
+            self.enable_prefix_caching is not None
+        ), "enable_prefix_caching must be set by this point"
 
         cache_config = CacheConfig(
             block_size=self.block_size,
@@ -1545,15 +1549,15 @@ class EngineArgs:
             # but we should not do this here.
             placement_group = ray.util.get_current_placement_group()
 
-        assert not headless or not self.data_parallel_hybrid_lb, (
-            "data_parallel_hybrid_lb is not applicable in headless mode"
-        )
-        assert not (self.data_parallel_hybrid_lb and self.data_parallel_external_lb), (
-            "data_parallel_hybrid_lb and data_parallel_external_lb cannot both be True."
-        )
-        assert self.data_parallel_backend == "mp" or self.nnodes == 1, (
-            "nnodes > 1 is only supported with data_parallel_backend=mp"
-        )
+        assert (
+            not headless or not self.data_parallel_hybrid_lb
+        ), "data_parallel_hybrid_lb is not applicable in headless mode"
+        assert not (
+            self.data_parallel_hybrid_lb and self.data_parallel_external_lb
+        ), "data_parallel_hybrid_lb and data_parallel_external_lb cannot both be True."
+        assert (
+            self.data_parallel_backend == "mp" or self.nnodes == 1
+        ), "nnodes > 1 is only supported with data_parallel_backend=mp"
         inferred_data_parallel_rank = 0
         if self.nnodes > 1:
             world_size = (
@@ -1565,12 +1569,12 @@ class EngineArgs:
                 self.pipeline_parallel_size * self.tensor_parallel_size
             )
             local_world_size = world_size // self.nnodes
-            assert world_size % self.nnodes == 0, (
-                f"world_size={world_size} must be divisible by nnodes={self.nnodes}."
-            )
-            assert self.node_rank < self.nnodes, (
-                f"node_rank={self.node_rank} must be less than nnodes={self.nnodes}."
-            )
+            assert (
+                world_size % self.nnodes == 0
+            ), f"world_size={world_size} must be divisible by nnodes={self.nnodes}."
+            assert (
+                self.node_rank < self.nnodes
+            ), f"node_rank={self.node_rank} must be less than nnodes={self.nnodes}."
             inferred_data_parallel_rank = (
                 self.node_rank * local_world_size
             ) // world_size_within_dp
@@ -1633,9 +1637,9 @@ class EngineArgs:
                     self.node_rank,
                 )
         else:
-            assert not self.data_parallel_hybrid_lb, (
-                "data_parallel_size_local must be set to use data_parallel_hybrid_lb."
-            )
+            assert (
+                not self.data_parallel_hybrid_lb
+            ), "data_parallel_size_local must be set to use data_parallel_hybrid_lb."
 
             if self.data_parallel_backend == "ray" and (
                 envs.VLLM_RAY_DP_PACK_STRATEGY == "span"
@@ -1726,16 +1730,16 @@ class EngineArgs:
             target_parallel_config=parallel_config,
         )
 
-        assert self.max_num_batched_tokens is not None, (
-            "max_num_batched_tokens must be set by this point"
-        )
+        assert (
+            self.max_num_batched_tokens is not None
+        ), "max_num_batched_tokens must be set by this point"
         assert self.max_num_seqs is not None, "max_num_seqs must be set by this point"
-        assert self.enable_chunked_prefill is not None, (
-            "enable_chunked_prefill must be set by this point"
-        )
-        assert model_config.max_model_len is not None, (
-            "max_model_len must be set by this point"
-        )
+        assert (
+            self.enable_chunked_prefill is not None
+        ), "enable_chunked_prefill must be set by this point"
+        assert (
+            model_config.max_model_len is not None
+        ), "max_model_len must be set by this point"
         scheduler_config = SchedulerConfig(
             runner_type=model_config.runner_type,
             max_num_batched_tokens=self.max_num_batched_tokens,
@@ -1770,9 +1774,11 @@ class EngineArgs:
                 lora_dtype=self.lora_dtype,
                 enable_tower_connector_lora=self.enable_tower_connector_lora,
                 specialize_active_lora=self.specialize_active_lora,
-                max_cpu_loras=self.max_cpu_loras
-                if self.max_cpu_loras and self.max_cpu_loras > 0
-                else None,
+                max_cpu_loras=(
+                    self.max_cpu_loras
+                    if self.max_cpu_loras and self.max_cpu_loras > 0
+                    else None
+                ),
             )
             if self.enable_lora
             else None
@@ -2127,9 +2133,9 @@ class EngineArgs:
                 self.max_num_seqs *= 2
 
         if orig_max_num_batched_tokens is None:
-            assert model_config.max_model_len is not None, (
-                "max_model_len must be set by this point"
-            )
+            assert (
+                model_config.max_model_len is not None
+            ), "max_model_len must be set by this point"
             if not self.enable_chunked_prefill:
                 # If max_model_len is too short, use the default for higher throughput.
                 self.max_num_batched_tokens = max(

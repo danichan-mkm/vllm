@@ -528,6 +528,41 @@ def _rocm_aiter_rmsnorm2d_fwd_with_add_fake(
     return out, residual_out
 
 
+def _rocm_aiter_triton_rms_norm_impl(
+    x: torch.Tensor, weight: torch.Tensor, variance_epsilon: float
+) -> torch.Tensor:
+    from aiter.ops.triton.normalization.rmsnorm import rms_norm
+
+    if x.dim() > 2:
+        x_original_shape = x.shape
+        x = x.reshape(-1, x_original_shape[-1])
+        x = rms_norm(x, weight, variance_epsilon)
+        return x.reshape(x_original_shape)
+
+    return rms_norm(x, weight, variance_epsilon)
+
+
+def _rocm_aiter_triton_rmsnorm2d_fwd_with_add_impl(
+    x: torch.Tensor,
+    residual: torch.Tensor,
+    weight: torch.Tensor,
+    variance_epsilon: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    from aiter.ops.triton.normalization.rmsnorm import rmsnorm2d_fwd_with_add
+
+    residual_out = torch.empty_like(residual)
+    out = torch.empty_like(x)
+    rmsnorm2d_fwd_with_add(
+        out,
+        x,
+        residual,
+        residual_out,
+        weight,
+        variance_epsilon,
+    )
+    return out, residual_out
+
+
 def _rocm_aiter_rmsnorm_fused_add_dynamic_quant_impl(
     x: torch.Tensor,
     residual: torch.Tensor,
@@ -1168,6 +1203,19 @@ class rocm_aiter_ops:
             )
 
             direct_register_custom_op(
+                op_name="rocm_aiter_triton_rms_norm",
+                op_func=_rocm_aiter_triton_rms_norm_impl,
+                fake_impl=_rocm_aiter_rms_norm_fake,
+            )
+
+            direct_register_custom_op(
+                op_name="rocm_aiter_triton_rmsnorm2d_fwd_with_add",
+                op_func=_rocm_aiter_triton_rmsnorm2d_fwd_with_add_impl,
+                fake_impl=_rocm_aiter_rmsnorm2d_fwd_with_add_fake,
+                dispatch_key=current_platform.dispatch_key,
+            )
+
+            direct_register_custom_op(
                 op_name="rocm_aiter_rmsnorm_fused_dynamic_quant",
                 op_func=_rocm_aiter_rmsnorm_fused_dynamic_quant_impl,
                 fake_impl=_rocm_aiter_rmsnorm_fused_dynamic_quant_fake,
@@ -1303,6 +1351,23 @@ class rocm_aiter_ops:
         variance_epsilon: float,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return torch.ops.vllm.rocm_aiter_rmsnorm2d_fwd_with_add(
+            x, residual, weight, variance_epsilon
+        )
+
+    @staticmethod
+    def rms_norm_triton(
+        x: torch.Tensor, weight: torch.Tensor, variance_epsilon: float
+    ) -> torch.Tensor:
+        return torch.ops.vllm.rocm_aiter_triton_rms_norm(x, weight, variance_epsilon)
+
+    @staticmethod
+    def rms_norm2d_with_add_triton(
+        x: torch.Tensor,
+        residual: torch.Tensor,
+        weight: torch.Tensor,
+        variance_epsilon: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return torch.ops.vllm.rocm_aiter_triton_rmsnorm2d_fwd_with_add(
             x, residual, weight, variance_epsilon
         )
 
